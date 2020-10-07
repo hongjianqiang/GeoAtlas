@@ -1,32 +1,16 @@
 import fs from 'fs';
 import https from 'https';
 
-interface IConfig {
-  outFiles: [string, string];
-  urls: [string, string];
-}
+// 同时下载的线程数
+const THREADS = 10;
 
-// 配置信息
-function Config(adcode: string = '100000'): IConfig {
-  const BASE = 'https://geo.datav.aliyun.com/areas_v2/bound/'
-  const OUT_DIR = './china'
-  const file1 = `${adcode}.json`
-  const file2 = `${adcode}_full.json`
-
-  return {
-    outFiles: [
-      `${OUT_DIR}/${file1}`,
-      `${OUT_DIR}/${file2}`
-    ],
-    urls: [
-      `${BASE}${file1}`,
-      `${BASE}${file2}`,
-    ]
-  }
-}
+function flatDeep (arr: Array<any>, d = 1): Array<any> {
+  return d > 0 ? arr.reduce((acc, val) => acc.concat(Array.isArray(val) ? flatDeep(val, d - 1) : val), [])
+               : arr.slice();
+};
 
 function httpsGet (url: string, encoding: 'utf8' = 'utf8'): Promise<any> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     https.get(url, res => {
       let rawData = '';
 
@@ -71,40 +55,51 @@ function writeFile (filepath: string, data: any) {
   })
 }
 
-async function recursive (config: IConfig) {
-  const { urls, outFiles } = config
+async function download (adcode: string = '100000', isFull = false) {
+  const BASE = 'https://geo.datav.aliyun.com/areas_v2/bound/'
+  const SAVE = './china/'
 
-  let url = '', file = '', res: any;
+  let file = `${adcode}.json`
+  
+  isFull && (file = `${adcode}_full.json`)
 
-  // 不包含子区域
-  url = urls[0]
-  file = outFiles[0]
-  res = await httpsGet(url)
+  let link = `${BASE}${file}`
+  let filePath = `${SAVE}${file}`
+
+  const res = await httpsGet(link)
+
   if (res) {
-    await writeFile(file, res)
-    console.log(url)
+    await writeFile(filePath, res)
+    console.log(`${filePath} OK`)
   }
 
-  // 包含子区域
-  url = urls[1]
-  file = outFiles[1]
-  res = await httpsGet(url)
-  if (res) {
-    await writeFile(file, res)
-    console.log(url)
-
-    const adcodes: Array<string> = res.features.map((m: any) => m.properties.adcode)
-
-    for (const adcode of adcodes) {
-      const config = Config(adcode)
-      await recursive(config)
-    }
+  if (isFull && res && Array.isArray(res.features)) {
+    return res.features.map((m: any) => m.properties.adcode)
+  } else {
+    return null
   }
 }
 
 // 程序主入口
-function main () {
-  recursive(Config())
+async function main () {
+  const adcodes = ['100000']
+  const adcodesMap = Object.create(null)
+
+  while (adcodes.length) {
+    const portion = adcodes.splice(0, THREADS)
+
+    await Promise.all(portion.map(adcode => download(adcode, false)))
+
+    const results: any = await Promise.all(portion.map(adcode => download(adcode, true)))
+
+    if (Array.isArray(results)) {
+      const newAdcodes = flatDeep(results, Infinity).filter(adcode => adcode && !adcodesMap[adcode])
+
+      adcodes.push(...newAdcodes)
+    }
+
+    portion.map(adcode => (adcodesMap[adcode] = true))
+  }
 }
 
 main()

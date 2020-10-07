@@ -41,24 +41,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 var fs_1 = __importDefault(require("fs"));
 var https_1 = __importDefault(require("https"));
-// 配置信息
-function Config(adcode) {
-    if (adcode === void 0) { adcode = '100000'; }
-    var BASE = 'https://geo.datav.aliyun.com/areas_v2/bound/';
-    var OUT_DIR = './china';
-    var file1 = adcode + ".json";
-    var file2 = adcode + "_full.json";
-    return {
-        outFiles: [
-            OUT_DIR + "/" + file1,
-            OUT_DIR + "/" + file2
-        ],
-        urls: [
-            "" + BASE + file1,
-            "" + BASE + file2,
-        ]
-    };
+// 同时下载的线程数
+var THREADS = 10;
+function flatDeep(arr, d) {
+    if (d === void 0) { d = 1; }
+    return d > 0 ? arr.reduce(function (acc, val) { return acc.concat(Array.isArray(val) ? flatDeep(val, d - 1) : val); }, [])
+        : arr.slice();
 }
+;
 function httpsGet(url, encoding) {
     if (encoding === void 0) { encoding = 'utf8'; }
     return new Promise(function (resolve) {
@@ -101,59 +91,69 @@ function writeFile(filepath, data) {
         });
     });
 }
-function recursive(config) {
+function download(adcode, isFull) {
+    if (adcode === void 0) { adcode = '100000'; }
+    if (isFull === void 0) { isFull = false; }
     return __awaiter(this, void 0, void 0, function () {
-        var urls, outFiles, url, file, res, adcodes, _i, adcodes_1, adcode, config_1;
+        var BASE, SAVE, file, link, filePath, res;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    urls = config.urls, outFiles = config.outFiles;
-                    url = '', file = '';
-                    // 不包含子区域
-                    url = urls[0];
-                    file = outFiles[0];
-                    return [4 /*yield*/, httpsGet(url)];
+                    BASE = 'https://geo.datav.aliyun.com/areas_v2/bound/';
+                    SAVE = './china/';
+                    file = adcode + ".json";
+                    isFull && (file = adcode + "_full.json");
+                    link = "" + BASE + file;
+                    filePath = "" + SAVE + file;
+                    return [4 /*yield*/, httpsGet(link)];
                 case 1:
                     res = _a.sent();
                     if (!res) return [3 /*break*/, 3];
-                    return [4 /*yield*/, writeFile(file, res)];
+                    return [4 /*yield*/, writeFile(filePath, res)];
                 case 2:
                     _a.sent();
-                    console.log(url);
+                    console.log(filePath + " OK");
                     _a.label = 3;
                 case 3:
-                    // 包含子区域
-                    url = urls[1];
-                    file = outFiles[1];
-                    return [4 /*yield*/, httpsGet(url)];
-                case 4:
-                    res = _a.sent();
-                    if (!res) return [3 /*break*/, 9];
-                    return [4 /*yield*/, writeFile(file, res)];
-                case 5:
-                    _a.sent();
-                    console.log(url);
-                    adcodes = res.features.map(function (m) { return m.properties.adcode; });
-                    _i = 0, adcodes_1 = adcodes;
-                    _a.label = 6;
-                case 6:
-                    if (!(_i < adcodes_1.length)) return [3 /*break*/, 9];
-                    adcode = adcodes_1[_i];
-                    config_1 = Config(adcode);
-                    return [4 /*yield*/, recursive(config_1)];
-                case 7:
-                    _a.sent();
-                    _a.label = 8;
-                case 8:
-                    _i++;
-                    return [3 /*break*/, 6];
-                case 9: return [2 /*return*/];
+                    if (isFull && res && Array.isArray(res.features)) {
+                        return [2 /*return*/, res.features.map(function (m) { return m.properties.adcode; })];
+                    }
+                    else {
+                        return [2 /*return*/, null];
+                    }
+                    return [2 /*return*/];
             }
         });
     });
 }
 // 程序主入口
 function main() {
-    recursive(Config());
+    return __awaiter(this, void 0, void 0, function () {
+        var adcodes, adcodesMap, portion, results, newAdcodes;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    adcodes = ['100000'];
+                    adcodesMap = Object.create(null);
+                    _a.label = 1;
+                case 1:
+                    if (!adcodes.length) return [3 /*break*/, 4];
+                    portion = adcodes.splice(0, THREADS);
+                    return [4 /*yield*/, Promise.all(portion.map(function (adcode) { return download(adcode, false); }))];
+                case 2:
+                    _a.sent();
+                    return [4 /*yield*/, Promise.all(portion.map(function (adcode) { return download(adcode, true); }))];
+                case 3:
+                    results = _a.sent();
+                    if (Array.isArray(results)) {
+                        newAdcodes = flatDeep(results, Infinity).filter(function (adcode) { return adcode && !adcodesMap[adcode]; });
+                        adcodes.push.apply(adcodes, newAdcodes);
+                    }
+                    portion.map(function (adcode) { return (adcodesMap[adcode] = true); });
+                    return [3 /*break*/, 1];
+                case 4: return [2 /*return*/];
+            }
+        });
+    });
 }
 main();
