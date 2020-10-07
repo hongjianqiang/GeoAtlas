@@ -43,6 +43,8 @@ var fs_1 = __importDefault(require("fs"));
 var https_1 = __importDefault(require("https"));
 // 同时下载的线程数
 var THREADS = 10;
+// 实时统计下载了多少个文件
+var count = 0;
 function flatDeep(arr, d) {
     if (d === void 0) { d = 1; }
     return d > 0 ? arr.reduce(function (acc, val) { return acc.concat(Array.isArray(val) ? flatDeep(val, d - 1) : val); }, [])
@@ -112,7 +114,7 @@ function download(adcode, isFull) {
                     return [4 /*yield*/, writeFile(filePath, res)];
                 case 2:
                     _a.sent();
-                    console.log(filePath + " OK");
+                    console.log(++count + "\u3001" + filePath + " OK");
                     _a.label = 3;
                 case 3:
                     if (isFull && res && Array.isArray(res.features)) {

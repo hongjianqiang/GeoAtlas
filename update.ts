@@ -4,6 +4,9 @@ import https from 'https';
 // 同时下载的线程数
 const THREADS = 10;
 
+// 实时统计下载了多少个文件
+let count = 0
+
 function flatDeep (arr: Array<any>, d = 1): Array<any> {
   return d > 0 ? arr.reduce((acc, val) => acc.concat(Array.isArray(val) ? flatDeep(val, d - 1) : val), [])
                : arr.slice();
@@ -70,7 +73,7 @@ async function download (adcode: string = '100000', isFull = false) {
 
   if (res) {
     await writeFile(filePath, res)
-    console.log(`${filePath} OK`)
+    console.log(`${++count}、${filePath} OK`)
   }
 
   if (isFull && res && Array.isArray(res.features)) {
